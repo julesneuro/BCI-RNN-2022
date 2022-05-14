@@ -3,7 +3,6 @@ import numpy.matlib as ml
 from scipy.optimize import minimize
 import pickle as pkl
 import rsatoolbox
-import itertools
 
 # Model Inference
 
@@ -75,3 +74,119 @@ def optimal_aud_location(Xv, Xa, N, pCommon, sigV, varV, sigA, varA, sigP, varP)
     sHatAC2 = opt_position_conditionalised_C2(Xv, Xa, N, pCommon, sigV, varV, sigA, varA, sigP, varP)[1]
     sHatA = posterior_1C*sHatAC1 + (1-posterior_1C)*sHatAC2 #model averaging
     return sHatA
+
+# Model Fitting Functions
+
+def clip(i):
+    
+    """
+        Avoid division by zero!
+    """
+    if i == 0:
+        i += 0.0001
+        
+    return i
+
+def get_classprobs(preds, locs = [20, 40, 60, 80, 100]):
+    
+    d_list = []
+    discrete_list = []
+    
+    # Create Bins
+    for i in preds:
+        d = min(locs, key=lambda x:abs(x-i))
+        d_list.append(d)
+    for i in locs:
+        count = d_list.count(i)
+        discrete_list.append(count)
+       
+    # Return as list of probabilities
+    probability_list = [i / sum(discrete_list) for i in discrete_list]
+    probability_list = [clip(i) for i in probability_list]
+    
+    return probability_list
+
+def loglik(n, p):
+    
+    """
+        Returns MLE estimate for multinomial distribution.
+        n = list of counts
+        p = list of estimated class probabilities from 
+            model sampling.
+    """
+    
+    ll_list = []
+    
+    for i, j in zip(n, p):
+        term = i * np.log(j)
+        ll_list.append(term)
+    
+    return sum(ll_list)
+
+def fit_model(N, data, params):
+    
+    """
+        Args:
+        N = number of times the inference model is sampled to
+            parameterize the multinomial dist.
+        data = np.array dim n_conditions * n_modalities * n_buttons
+        params = parsed param guesses from the scipy.optimize function.
+    """
+    
+    iteration_ll = []
+    
+    for cond in data:
+        
+        v_counts = data[cond, 0, :]
+        a_counts = data[cond, 1, :]
+        
+        # Get response estimates
+        Xv, Xa = (sigV * np.random.randn(N,1) + Sv), (sigA * np.random.randn(N,1) + Sa)
+        
+        # Get response dists
+        sHatV = optimal_visual_location(Xv, Xa, N, pCommon, sigV, varV, sigA, varA, sigP, varP)
+        sHatA = optimal_aud_location(Xv, Xa, N, pCommon, sigV, varV, sigA, varA, sigP, varP)
+        
+        # Get Predicted Bins
+        v_probs, a_probs = get_classprobs(sHatV), get_classprobs(sHatA)
+        
+        # Calculate loglikelihood
+        v_ll, a_ll = loglik(v_counts, v_probs), loglik(a_counts, a_probs)
+        ll = v_all + a_ll
+        
+        iteration_ll.append(ll)
+        
+    ll = sum(iteration_ll)
+    
+    return ll, params
+
+# OOP Implementation
+
+class BCIModel:
+    
+    """
+        Object to fit BCI model to behavioural data from either human observers
+        or artificial neural networks.
+        
+        Args:
+        
+        data = n_conditions * 5d vector of counts
+        
+        Methods:
+    """
+    
+    def __init__(self, data):
+        
+        self.data = data
+        
+    def get_simulated_rdm():
+        
+       pass
+
+    def fit():
+        
+        ll, params, minimize(fit_model, )
+        
+        # should n_condition * counts array
+        # fitted parameters
+        
